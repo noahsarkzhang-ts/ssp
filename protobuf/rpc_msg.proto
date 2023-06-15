@@ -1,0 +1,35 @@
+syntax = "proto3";  // 协议为proto3
+
+package msg;  // 包名
+
+option go_package ="./msg"; //protoc --go_out=../ ./rpc_msg.proto
+
+// 定义消息， Msg 类型
+message RpcMsg {
+    uint32 id = 1;
+    uint32 cmd = 2;
+    uint32 type = 3;
+    bytes data = 4;
+}
+
+message LoginReq {
+    string name = 1;
+    string pwd = 2;
+}
+
+message CommonRes {
+    int32 code = 1;
+    string msg = 2;
+}
+
+message newChannelReq {
+    string addr = 1;
+}
+
+message newChannelRes {
+    int32 code = 1;
+    string msg = 2;
+    uint32 channelId = 3;
+}
+
+

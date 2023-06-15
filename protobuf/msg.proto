@@ -1,0 +1,12 @@
+syntax = "proto3";  // 协议为proto3
+
+package msg;  // 包名
+
+option go_package ="./msg"; //protoc --go_out=./ ./msg.proto
+
+// 定义消息， Msg 类型
+message Msg {
+    uint32 cmd = 1;
+    uint32 id = 2;
+    bytes data = 3;
+}
