@@ -1,5 +1,7 @@
 package network
 
+import "fmt"
+
 type Channel struct {
 	// 通道id
 	Id uint32
@@ -42,11 +44,15 @@ func (c *Channel) Read(p []byte) (n int, err error) {
 
 func (c *Channel) Close() error {
 
-	close(c.ReadBuff)
+	//close(c.ReadBuff)
 
 	return nil
 }
 
 func (c *Channel) AppendReadBuff(data []byte) {
 	c.ReadBuff <- data
+}
+
+func (c *Channel) String() string {
+	return fmt.Sprintf("%s-%s:%d", c.UnderlyingConn.conn.RemoteAddr(), c.UnderlyingConn.conn.LocalAddr(), c.Id)
 }

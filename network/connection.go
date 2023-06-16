@@ -77,7 +77,7 @@ func (c *Connection) Read() {
 			break
 		}
 
-		fmt.Printf("receive a message %+v \n", m)
+		//fmt.Printf("receive a message %+v \n", m)
 
 		cmd := MsgCmd(m.Cmd)
 		switch cmd {
