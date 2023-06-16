@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 
 	"github.com/golang/protobuf/proto"
@@ -64,29 +65,25 @@ func (c *Connection) Read() {
 		if err == nil && len(data) > 0 {
 			err := proto.Unmarshal(data, m)
 			if err != nil {
-				fmt.Printf("Close connection:%s \n", c.conn.RemoteAddr())
+				log.Printf("Close connection:%s \n", c.conn.RemoteAddr())
 				c.Close()
 
 				break
 			}
 		}
 		if err != nil {
-			fmt.Printf("Close connection:%s \n", c.conn.RemoteAddr())
+			log.Printf("Close connection:%s \n", c.conn.RemoteAddr())
 			c.Close()
 
 			break
 		}
 
-		//fmt.Printf("receive a message %+v \n", m)
-
 		cmd := MsgCmd(m.Cmd)
 		switch cmd {
 		case RpcMsgCmd:
-			fmt.Println("receive rpc...")
 			c.RpcProcess(m.Data)
 		case FlowMsgCmd:
 			// 写入channel
-			fmt.Println("receive flow...")
 			c.Flow(m)
 		case HeartbeatMsgCmd:
 		default:
@@ -104,7 +101,7 @@ func (c *Connection) Close() {
 	// 关闭通道
 	for id, ch := range c.channels {
 
-		fmt.Printf("Close channel: %d \n", id)
+		log.Printf("Close channel: %d \n", id)
 		ch.Close()
 	}
 
@@ -142,6 +139,12 @@ func (c *Connection) ApplyChannel() *Channel {
 
 func (c *Connection) RegChannel(channelId uint32, channel *Channel) bool {
 	c.channels[channelId] = channel
+
+	return true
+}
+
+func (c *Connection) RemoveChannel(channelId uint32) bool {
+	delete(c.channels, channelId)
 
 	return true
 }

@@ -1,8 +1,23 @@
 package network
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+	"sync"
+
+	"log"
+)
+
+type channelFlag uint8
+
+const (
+	channelOpenFlag  channelFlag = 1
+	channelCloseFlag channelFlag = 2
+)
 
 type Channel struct {
+	sync.Mutex
+
 	// 通道id
 	Id uint32
 
@@ -11,6 +26,9 @@ type Channel struct {
 
 	// Connection
 	UnderlyingConn *Connection
+
+	// 状态
+	flag channelFlag
 }
 
 func NewChannel(id uint32, conn *Connection) *Channel {
@@ -19,6 +37,7 @@ func NewChannel(id uint32, conn *Connection) *Channel {
 	channel.ReadBuff = make(chan []byte, 1024)
 	channel.UnderlyingConn = conn
 	channel.Id = id
+	channel.flag = channelOpenFlag
 
 	return channel
 }
@@ -39,18 +58,36 @@ func (c *Channel) Read(p []byte) (n int, err error) {
 		return cLen, nil
 	}
 
-	return 0, nil
+	return -1, errors.New("Channel Close.")
 }
 
 func (c *Channel) Close() error {
 
-	//close(c.ReadBuff)
+	c.Lock()
+	defer c.Unlock()
+
+	if c.flag == channelCloseFlag {
+		return nil
+	}
+
+	c.flag = channelCloseFlag
+	close(c.ReadBuff)
+
+	c.UnderlyingConn.RemoveChannel(c.Id)
+
+	log.Printf("Close channel %s \n", c.String())
 
 	return nil
 }
 
 func (c *Channel) AppendReadBuff(data []byte) {
-	c.ReadBuff <- data
+	c.Lock()
+	defer c.Unlock()
+
+	if c.flag != channelCloseFlag {
+		c.ReadBuff <- data
+	}
+
 }
 
 func (c *Channel) String() string {

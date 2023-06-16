@@ -1,7 +1,7 @@
 package network
 
 import (
-	"fmt"
+	"log"
 
 	"github.com/ssp/msg"
 	"google.golang.org/protobuf/proto"
@@ -30,7 +30,7 @@ func (c *Context) SendMessge(message *msg.Msg) {
 
 	data, err := msg.Encode(bMsg)
 	if err != nil {
-		fmt.Printf("send %d \n", len(data))
+		log.Printf("send %d \n", len(data))
 		return
 	}
 

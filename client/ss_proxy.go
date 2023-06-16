@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 
 	"github.com/ssp/network"
@@ -23,21 +24,21 @@ func NewSocks5Proxy(addr string, client *Client) *Socks5Proxy {
 func (p *Socks5Proxy) Start() {
 	server, err := net.Listen("tcp", p.Addr)
 	if err != nil {
-		fmt.Printf("Listen failed: %v\n", err)
+		log.Printf("Listen failed: %v\n", err)
 		return
 	}
 
 	p.Proxy = server
 	go p.Accept()
 
-	fmt.Println("Proxy Listen successfully:")
+	log.Println("Proxy Listen successfully:")
 }
 
 func (p *Socks5Proxy) Accept() {
 	for {
 		src, err := p.Proxy.Accept()
 		if err != nil {
-			fmt.Printf("Socks5 proxy accept failed: %v", err)
+			log.Printf("Socks5 proxy accept failed: %+v \n", err)
 			continue
 		}
 		go p.Process(src)
@@ -46,14 +47,14 @@ func (p *Socks5Proxy) Accept() {
 
 func (p *Socks5Proxy) Process(src net.Conn) {
 	if err := p.Socks5Auth(src); err != nil {
-		fmt.Println("auth error:", err)
+		log.Println("auth error:", err)
 		src.Close()
 		return
 	}
 
 	channel, err := p.Socks5Connect(src)
 	if err != nil {
-		fmt.Println("connect error:", err)
+		log.Println("connect error:", err)
 		src.Close()
 		return
 	}

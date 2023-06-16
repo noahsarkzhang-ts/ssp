@@ -1,7 +1,7 @@
 package network
 
 import (
-	"fmt"
+	"log"
 	"net"
 	"time"
 
@@ -12,7 +12,7 @@ import (
 func RpcInvoker(conn *Connection, message *msg.RpcMsg, timeout time.Duration, callbck RpcCallback) *RpcPromise {
 
 	rpcMsg := BuildMsgOfRpc(message)
-	fmt.Printf("send message: %v \n", rpcMsg)
+	log.Printf("send message: %v \n", rpcMsg)
 
 	SendMessge(conn, rpcMsg)
 
@@ -32,7 +32,7 @@ func SendMessge(conn *Connection, message *msg.Msg) {
 
 	data, err := msg.Encode(bMsg)
 	if err != nil {
-		fmt.Printf("send %d \n", len(data))
+		log.Printf("send %d \n", len(data))
 		return
 	}
 
@@ -44,11 +44,11 @@ func BuildNewChannel(context *Context, message *msg.RpcMsg) {
 
 	err := proto.Unmarshal(message.Data, channelReq)
 	if err != nil {
-		fmt.Println("Invlid new channel request!")
+		log.Println("Invlid new channel request!")
 		return
 	}
 
-	fmt.Printf("Receive a new channel request:%+v \n", channelReq)
+	log.Printf("Receive a new channel request:%+v \n", channelReq)
 
 	// TODO
 	channel := context.conn.ApplyChannel()
@@ -63,7 +63,7 @@ func BuildNewChannel(context *Context, message *msg.RpcMsg) {
 
 	if err != nil {
 
-		fmt.Printf("net Dial error:%s \n", err.Error())
+		log.Printf("net Dial error:%s \n", err.Error())
 
 		rpcMsg = BuildNewChannelRes(message, channel, -1, err.Error())
 		resMsg = BuildMsgOfRpc(rpcMsg)
@@ -81,7 +81,7 @@ func BuildNewChannel(context *Context, message *msg.RpcMsg) {
 }
 
 func Login(context *Context, message *msg.RpcMsg) {
-	fmt.Printf("receive a login request:%+v\n", message)
+	log.Printf("receive a login request:%+v\n", message)
 
 	res := BuildCommonRes(message)
 	resMsg := BuildMsgOfRpc(res)
@@ -133,7 +133,7 @@ func BuildMsgOfRpc(message *msg.RpcMsg) *msg.Msg {
 
 	rpcMsg, err := proto.Marshal(message)
 	if err != nil {
-		fmt.Println("Invlid rpc message!")
+		log.Println("Invlid rpc message!")
 		panic(err)
 	}
 
@@ -158,11 +158,11 @@ func LoginReqCallback(conn *Connection, message *msg.RpcMsg) {
 
 	err := proto.Unmarshal(message.Data, res)
 	if err != nil {
-		fmt.Println("Invalid callback")
+		log.Println("Invalid callback")
 		return
 	}
 
-	fmt.Printf("Receive a login response: %v \n", res)
+	log.Printf("Receive a login response: %v \n", res)
 }
 
 func BuildCommonRes(req *msg.RpcMsg) *msg.RpcMsg {
@@ -174,7 +174,7 @@ func BuildCommonRes(req *msg.RpcMsg) *msg.RpcMsg {
 
 	bCommonRes, err := proto.Marshal(commonRes)
 	if err != nil {
-		fmt.Println("Invlid Message")
+		log.Println("Invlid Message")
 		return nil
 	}
 
@@ -194,7 +194,7 @@ func BuildNewChannelRes(req *msg.RpcMsg, ch *Channel, code int32, resString stri
 
 	bChannelRes, err := proto.Marshal(channelRes)
 	if err != nil {
-		fmt.Println("Invlid Message")
+		log.Println("Invlid Message")
 		return nil
 	}
 

@@ -2,7 +2,7 @@ package client
 
 import (
 	"errors"
-	"fmt"
+	"log"
 	"net"
 	"time"
 
@@ -35,11 +35,11 @@ func (c *Client) Connect() {
 
 	conn, err := net.Dial("tcp", c.ServerAddr)
 	if err != nil {
-		fmt.Printf("Connect server:%s fail...\n", c.ServerAddr)
+		log.Printf("Connect server:%s fail...\n", c.ServerAddr)
 		panic(err)
 	}
 
-	fmt.Printf("Connect server:%s success...\n", c.ServerAddr)
+	log.Printf("Connect server:%s success...\n", c.ServerAddr)
 
 	connection := network.NewConnection(conn)
 	c.RemoteConn = connection
@@ -53,14 +53,14 @@ func (c *Client) Connect() {
 
 func (c *Client) login() {
 	message := network.BuildLoginReq(c.RemoteConn)
-	fmt.Printf("send rpc message: %v \n", message)
+	log.Printf("send rpc message: %v \n", message)
 
 	promise := network.RpcInvoker(c.RemoteConn, message, 5*time.Second, nil)
 
 	res, ok := promise.Get()
 
 	if !ok {
-		fmt.Println("login request fail")
+		log.Println("login request fail")
 		c.Flag = UnConnected
 		return
 	}
@@ -70,7 +70,7 @@ func (c *Client) login() {
 
 	err := proto.Unmarshal(data, commonRes)
 	if err != nil {
-		fmt.Println("Invlid login res!!!")
+		log.Println("Invlid login res!!!")
 		c.Flag = UnConnected
 		return
 	}
@@ -85,13 +85,13 @@ func (c *Client) login() {
 func (c *Client) BuildNewChannel(addr string) (*network.Channel, error) {
 
 	channelMessage := network.BuildNewChannelReq(c.RemoteConn, addr)
-	fmt.Printf("send new channel message: %v \n", channelMessage)
+	log.Printf("send new channel message: %v \n", channelMessage)
 
 	channelPromise := network.RpcInvoker(c.RemoteConn, channelMessage, 5*time.Second, nil)
 	res, ok := channelPromise.Get()
 
 	if !ok {
-		fmt.Println("new channel request fail")
+		log.Println("new channel request fail")
 
 		return nil, errors.New("New channel fail")
 
@@ -102,7 +102,7 @@ func (c *Client) BuildNewChannel(addr string) (*network.Channel, error) {
 
 	err := proto.Unmarshal(data, channelRes)
 	if err != nil {
-		fmt.Println("Invlid channel res!!!")
+		log.Println("Invlid channel res!!!")
 
 		return nil, errors.New("Invlid channel res")
 	}

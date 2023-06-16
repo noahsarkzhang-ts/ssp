@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"log"
 	"net"
 
 	"github.com/ssp/network"
@@ -30,11 +31,11 @@ func (s *Server) Start() {
 
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
-		fmt.Printf("Server %s start fail...\n", addr)
+		log.Printf("Server %s start fail...\n", addr)
 		panic(err)
 	}
 
-	fmt.Printf("Server %s start successfuly...\n", addr)
+	log.Printf("Server %s start successfuly...\n", addr)
 
 	go s.Accept(listener)
 
@@ -46,7 +47,7 @@ func (s *Server) Accept(listener net.Listener) {
 		if err != nil {
 			continue
 		}
-		fmt.Printf("New conn:%s \n", conn.RemoteAddr())
+		log.Printf("New conn:%s \n", conn.RemoteAddr())
 
 		connection := network.NewConnection(conn)
 

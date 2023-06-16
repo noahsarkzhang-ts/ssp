@@ -1,7 +1,7 @@
 package main
 
 import (
-	"fmt"
+	"log"
 	"os"
 	"os/signal"
 	"syscall"
@@ -24,11 +24,11 @@ func main() {
 	for {
 		s := <-c
 
-		fmt.Println("Receive a signal!!!")
+		log.Println("Receive a signal!!!")
 
 		switch s {
 		case syscall.SIGQUIT, syscall.SIGTERM, syscall.SIGINT:
-			fmt.Println("Proxy exist!!!")
+			log.Println("Proxy exist!!!")
 			return
 		case syscall.SIGHUP:
 		default:
