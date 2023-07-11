@@ -81,7 +81,7 @@ func (c *Connection) Read() {
 		cmd := MsgCmd(m.Cmd)
 		switch cmd {
 		case RpcMsgCmd:
-			c.RpcProcess(m.Data)
+			go c.RpcProcess(m.Data)
 		case FlowMsgCmd:
 			// 写入channel
 			c.Flow(m)

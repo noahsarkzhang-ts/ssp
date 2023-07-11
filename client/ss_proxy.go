@@ -46,6 +46,9 @@ func (p *Socks5Proxy) Accept() {
 }
 
 func (p *Socks5Proxy) Process(src net.Conn) {
+
+	log.Printf("New conn:%s \n", src.RemoteAddr())
+
 	if err := p.Socks5Auth(src); err != nil {
 		log.Println("auth error:", err)
 		src.Close()
@@ -59,7 +62,8 @@ func (p *Socks5Proxy) Process(src net.Conn) {
 		return
 	}
 
-	network.FlowForward(channel, src)
+	target := network.NewRemoteConn(src)
+	network.FlowForward(channel, target)
 }
 
 func (p *Socks5Proxy) Socks5Auth(src net.Conn) (err error) {
@@ -143,9 +147,12 @@ func (p *Socks5Proxy) Socks5Connect(src net.Conn) (*network.Channel, error) {
 
 	// dest, err := net.Dial("tcp", destAddrPort)
 	// 建立远程通道
+	log.Printf("Connect %s\n", destAddrPort)
 	dest, err := p.RemoteEndpoint.BuildNewChannel(destAddrPort)
 
 	if err != nil {
+		log.Printf("Connect %s failed\n", destAddrPort)
+		src.Write([]byte{0x05, 0x04, 0x00, 0x01, 0, 0, 0, 0, 0, 0})
 		return nil, errors.New("dial dst: " + err.Error())
 	}
 

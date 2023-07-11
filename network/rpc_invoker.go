@@ -69,10 +69,13 @@ func BuildNewChannel(context *Context, message *msg.RpcMsg) {
 		resMsg = BuildMsgOfRpc(rpcMsg)
 
 		context.SendMessge(resMsg)
+
+		return
 	}
 
 	// 转发
-	FlowForward(channel, dest)
+	target := NewRemoteConn(dest)
+	FlowForward(channel, target)
 
 	rpcMsg = BuildNewChannelRes(message, channel, 1, "success")
 	resMsg = BuildMsgOfRpc(rpcMsg)

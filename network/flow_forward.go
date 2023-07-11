@@ -3,17 +3,21 @@ package network
 import (
 	"io"
 	"log"
-	"net"
 )
 
-func FlowForward(client *Channel, target net.Conn) {
-	ch2connForward := func(src *Channel, dest net.Conn) {
+func FlowForward(client *Channel, target *RemoteConn) {
+
+	ch2connForward := func(src *Channel, dest *RemoteConn) {
 		defer src.Close()
 		defer dest.Close()
 
 		log.Printf("start ch2conn: %s\n", client)
 
-		written, err := io.Copy(dest, src)
+		var written int64
+		var err error
+		if src.Available() && dest.Available() {
+			written, err = io.Copy(dest.Target, src)
+		}
 
 		log.Printf("close ch2conn: %s,written:%d\n", client, written)
 		if err != nil {
@@ -21,12 +25,18 @@ func FlowForward(client *Channel, target net.Conn) {
 		}
 	}
 
-	conn2chForward := func(src net.Conn, dest *Channel) {
+	conn2chForward := func(src *RemoteConn, dest *Channel) {
 		defer src.Close()
 		defer dest.Close()
 
 		log.Printf("start conn2ch: %s\n", client)
-		written, err := io.Copy(dest, src)
+
+		var written int64
+		var err error
+
+		if src.Available() && dest.Available() {
+			written, err = io.Copy(dest, src.Target)
+		}
 
 		log.Printf("close conn2ch: %s,written:%d\n", client, written)
 		if err != nil {

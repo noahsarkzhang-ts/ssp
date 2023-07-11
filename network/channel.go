@@ -93,3 +93,7 @@ func (c *Channel) AppendReadBuff(data []byte) {
 func (c *Channel) String() string {
 	return fmt.Sprintf("%s-%s:%d", c.UnderlyingConn.conn.RemoteAddr(), c.UnderlyingConn.conn.LocalAddr(), c.Id)
 }
+
+func (c *Channel) Available() bool {
+	return c.flag == channelOpenFlag
+}
