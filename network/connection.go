@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"sync"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/ssp/msg"
@@ -18,6 +19,13 @@ const (
 	HeartbeatMsgCmd MsgCmd = 5
 	RpcMsgCmd       MsgCmd = 11
 	FlowMsgCmd      MsgCmd = 12
+)
+
+type connectonFlag uint8
+
+const (
+	connectionOpenFlag  connectonFlag = 1
+	connectionCloseFlag connectonFlag = 2
 )
 
 type Connection struct {
@@ -38,6 +46,18 @@ type Connection struct {
 
 	// 响应处理集合
 	promises map[uint32]*RpcPromise
+
+	// 连接状态
+	flag connectonFlag
+
+	// 读写锁，控制对 channels 字段的并发读写
+	chMutex sync.RWMutex
+
+	// 读写锁，控制对 flag 字段的并发读写
+	flagMutex sync.RWMutex
+
+	//读写锁，控制对 promises 字段的并发读写
+	promiseMutex sync.RWMutex
 }
 
 func NewConnection(conn net.Conn) *Connection {
@@ -50,6 +70,8 @@ func NewConnection(conn net.Conn) *Connection {
 
 	connection.channels = map[uint32]*Channel{}
 	connection.promises = map[uint32]*RpcPromise{}
+
+	connection.flag = connectionOpenFlag
 
 	return connection
 }
@@ -65,14 +87,14 @@ func (c *Connection) Read() {
 		if err == nil && len(data) > 0 {
 			err := proto.Unmarshal(data, m)
 			if err != nil {
-				log.Printf("Close connection:%s \n", c.conn.RemoteAddr())
+				log.Printf("Close connection:%s:%s \n", c.conn.RemoteAddr(), err.Error())
 				c.Close()
 
 				break
 			}
 		}
 		if err != nil {
-			log.Printf("Close connection:%s \n", c.conn.RemoteAddr())
+			log.Printf("Close connection:%s:%s \n", c.conn.RemoteAddr(), err.Error())
 			c.Close()
 
 			break
@@ -95,6 +117,10 @@ func (c *Connection) Read() {
 }
 
 func (c *Connection) Close() {
+	c.flagMutex.Lock()
+	defer c.flagMutex.Unlock()
+
+	log.Printf("Start close connection .....")
 	// 关闭 写缓存
 	close(c.writerBuff)
 
@@ -108,6 +134,10 @@ func (c *Connection) Close() {
 	c.channels = nil
 	c.promises = nil
 
+	c.flag = connectionCloseFlag
+
+	log.Printf("End close connection.....")
+
 }
 
 func (c *Connection) Write() {
@@ -120,12 +150,21 @@ func (c *Connection) Write() {
 
 func (c *Connection) WriteBytes(data []byte) error {
 
+	if c.flag == connectionCloseFlag {
+		log.Printf("Cann't write data,because connection was closed!\n")
+
+		return errors.New("Connection was closed!")
+	}
+
 	c.writerBuff <- data
 
 	return nil
 }
 
 func (c *Connection) ApplyChannel() *Channel {
+
+	c.chMutex.Lock()
+	defer c.chMutex.Unlock()
 
 	// 申请一个唯一的通道 id
 	id := c.channelIdGenerator.IncrementAndGet()
@@ -138,18 +177,29 @@ func (c *Connection) ApplyChannel() *Channel {
 }
 
 func (c *Connection) RegChannel(channelId uint32, channel *Channel) bool {
+
+	c.chMutex.Lock()
+	defer c.chMutex.Unlock()
+
 	c.channels[channelId] = channel
 
 	return true
 }
 
 func (c *Connection) RemoveChannel(channelId uint32) bool {
+
+	c.chMutex.Lock()
+	defer c.chMutex.Unlock()
+
 	delete(c.channels, channelId)
 
 	return true
 }
 
 func (c *Connection) Flow(msg *msg.Msg) {
+	// c.chMutex.RLock()
+	// defer c.chMutex.RUnlock()
+
 	id := msg.Id
 
 	if channel, ok := c.channels[id]; ok {
@@ -159,9 +209,22 @@ func (c *Connection) Flow(msg *msg.Msg) {
 
 func (c *Connection) RegPromise(requestId uint32, promise *RpcPromise) bool {
 
+	c.promiseMutex.Lock()
+	defer c.promiseMutex.Unlock()
+
 	c.promises[requestId] = promise
 
 	return true
+}
+
+func (c *Connection) PromiseProcess(result *msg.RpcMsg) {
+	c.promiseMutex.RLock()
+	defer c.promiseMutex.RUnlock()
+
+	requestId := result.Id
+	if promise, ok := c.promises[requestId]; ok {
+		promise.Set(result)
+	}
 }
 
 func (c *Connection) RpcProcess(message []byte) error {
@@ -182,10 +245,7 @@ func (c *Connection) RpcProcess(message []byte) error {
 				processor(context, rpcMsg)
 			}
 		} else {
-			requestId := rpcMsg.Id
-			if promise, ok := c.promises[requestId]; ok {
-				promise.Set(rpcMsg)
-			}
+			c.PromiseProcess(rpcMsg)
 		}
 
 	}
