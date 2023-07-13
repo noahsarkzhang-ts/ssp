@@ -2,6 +2,7 @@ package network
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -77,6 +78,9 @@ func NewConnection(conn net.Conn) *Connection {
 }
 
 func (c *Connection) Read() {
+	defer util.Trace("", "Client Read")()
+
+	ctx := context.Background()
 
 	reader := bufio.NewReader(c.conn)
 	//读消息
@@ -103,7 +107,7 @@ func (c *Connection) Read() {
 		cmd := MsgCmd(m.Cmd)
 		switch cmd {
 		case RpcMsgCmd:
-			go c.RpcProcess(m.Data)
+			go c.RpcProcess(ctx, m.Data)
 		case FlowMsgCmd:
 			// 写入channel
 			c.Flow(m)
@@ -118,7 +122,8 @@ func (c *Connection) Read() {
 
 func (c *Connection) Close() {
 	c.flagMutex.Lock()
-	defer c.flagMutex.Unlock()
+	c.flag = connectionCloseFlag
+	c.flagMutex.Unlock()
 
 	log.Printf("Start close connection .....")
 	// 关闭 写缓存
@@ -134,13 +139,11 @@ func (c *Connection) Close() {
 	c.channels = nil
 	c.promises = nil
 
-	c.flag = connectionCloseFlag
-
 	log.Printf("End close connection.....")
-
 }
 
 func (c *Connection) Write() {
+	defer util.Trace("", "Client Write")()
 
 	for data := range c.writerBuff {
 		c.conn.Write(data)
@@ -150,11 +153,15 @@ func (c *Connection) Write() {
 
 func (c *Connection) WriteBytes(data []byte) error {
 
+	c.flagMutex.Lock()
+
 	if c.flag == connectionCloseFlag {
 		log.Printf("Cann't write data,because connection was closed!\n")
 
 		return errors.New("Connection was closed!")
 	}
+
+	c.flagMutex.Unlock()
 
 	c.writerBuff <- data
 
@@ -163,14 +170,15 @@ func (c *Connection) WriteBytes(data []byte) error {
 
 func (c *Connection) ApplyChannel() *Channel {
 
-	c.chMutex.Lock()
-	defer c.chMutex.Unlock()
-
 	// 申请一个唯一的通道 id
 	id := c.channelIdGenerator.IncrementAndGet()
 	channel := NewChannel(id, c)
 
+	c.chMutex.Lock()
+
 	c.channels[id] = channel
+
+	c.chMutex.Unlock()
 
 	return channel
 
@@ -179,9 +187,10 @@ func (c *Connection) ApplyChannel() *Channel {
 func (c *Connection) RegChannel(channelId uint32, channel *Channel) bool {
 
 	c.chMutex.Lock()
-	defer c.chMutex.Unlock()
 
 	c.channels[channelId] = channel
+
+	c.chMutex.Unlock()
 
 	return true
 }
@@ -189,16 +198,15 @@ func (c *Connection) RegChannel(channelId uint32, channel *Channel) bool {
 func (c *Connection) RemoveChannel(channelId uint32) bool {
 
 	c.chMutex.Lock()
-	defer c.chMutex.Unlock()
 
 	delete(c.channels, channelId)
+
+	c.chMutex.Unlock()
 
 	return true
 }
 
 func (c *Connection) Flow(msg *msg.Msg) {
-	// c.chMutex.RLock()
-	// defer c.chMutex.RUnlock()
 
 	id := msg.Id
 
@@ -210,16 +218,13 @@ func (c *Connection) Flow(msg *msg.Msg) {
 func (c *Connection) RegPromise(requestId uint32, promise *RpcPromise) bool {
 
 	c.promiseMutex.Lock()
-	defer c.promiseMutex.Unlock()
-
 	c.promises[requestId] = promise
+	c.promiseMutex.Unlock()
 
 	return true
 }
 
 func (c *Connection) PromiseProcess(result *msg.RpcMsg) {
-	c.promiseMutex.RLock()
-	defer c.promiseMutex.RUnlock()
 
 	requestId := result.Id
 	if promise, ok := c.promises[requestId]; ok {
@@ -227,7 +232,7 @@ func (c *Connection) PromiseProcess(result *msg.RpcMsg) {
 	}
 }
 
-func (c *Connection) RpcProcess(message []byte) error {
+func (c *Connection) RpcProcess(ctx context.Context, message []byte) error {
 	rpcMsg := &msg.RpcMsg{}
 
 	if len(message) > 0 {
@@ -241,8 +246,8 @@ func (c *Connection) RpcProcess(message []byte) error {
 		if rpcMsg.Type == uint32(ReqType) {
 			cmd := RpcCmd(rpcMsg.Cmd)
 			if processor, ok := Processors[cmd]; ok {
-				context := NewContext(c)
-				processor(context, rpcMsg)
+				rpcContext := NewContext(c)
+				processor(ctx, rpcContext, rpcMsg)
 			}
 		} else {
 			c.PromiseProcess(rpcMsg)

@@ -1,7 +1,7 @@
 package network
 
 import (
-	"fmt"
+	"log"
 	"time"
 
 	"github.com/ssp/msg"
@@ -11,14 +11,16 @@ type RpcPromise struct {
 	timer    *time.Timer
 	result   chan *msg.RpcMsg
 	callback RpcCallback
+	traceId  string
 }
 
-func NewRpcPromise(timeout time.Duration, callback RpcCallback) *RpcPromise {
+func NewRpcPromise(traceId string, timeout time.Duration, callback RpcCallback) *RpcPromise {
 	promise := &RpcPromise{}
 
 	promise.timer = time.NewTimer(timeout)
 	promise.result = make(chan *msg.RpcMsg)
 	promise.callback = callback
+	promise.traceId = traceId
 
 	return promise
 }
@@ -36,7 +38,7 @@ func (p *RpcPromise) Get() (*msg.RpcMsg, bool) {
 
 		return res, true
 	case <-p.timer.C: //超时
-		fmt.Println("RpcPromise timeout")
+		log.Printf("%s,RpcPromise timeout.\n", p.traceId)
 		return res, false
 	}
 }

@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"errors"
 	"log"
 	"net"
@@ -9,6 +10,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/ssp/msg"
 	"github.com/ssp/network"
+	"github.com/ssp/util"
 )
 
 type ClientFlag int
@@ -32,6 +34,7 @@ func New(ServerAddr string) *Client {
 }
 
 func (c *Client) Connect() {
+	defer util.Trace("Client Connect", "")()
 
 	conn, err := net.Dial("tcp", c.ServerAddr)
 	if err != nil {
@@ -52,10 +55,12 @@ func (c *Client) Connect() {
 }
 
 func (c *Client) login() {
+	defer util.Trace("Client Login", "")()
+
 	message := network.BuildLoginReq(c.RemoteConn)
 	log.Printf("send rpc message: %v \n", message)
 
-	promise := network.RpcInvoker(c.RemoteConn, message, 5*time.Second, nil)
+	promise := network.RpcInvoker(context.TODO(), c.RemoteConn, message, 5*time.Second, nil)
 
 	res, ok := promise.Get()
 
@@ -82,16 +87,19 @@ func (c *Client) login() {
 
 }
 
-func (c *Client) BuildNewChannel(addr string) (*network.Channel, error) {
+func (c *Client) BuildNewChannel(ctx context.Context, addr string) (*network.Channel, error) {
+	traceId, _ := ctx.Value("traceId").(string)
 
-	channelMessage := network.BuildNewChannelReq(c.RemoteConn, addr)
-	log.Printf("send new channel message: %v \n", channelMessage)
+	defer util.Trace(traceId, "Client BuildNewChannel")()
 
-	channelPromise := network.RpcInvoker(c.RemoteConn, channelMessage, 5*time.Second, nil)
+	channelMessage := network.BuildNewChannelReq(c.RemoteConn, addr, traceId)
+	log.Printf("%s,send new channel message: %v \n", traceId, channelMessage)
+
+	channelPromise := network.RpcInvoker(ctx, c.RemoteConn, channelMessage, 5*time.Second, nil)
 	res, ok := channelPromise.Get()
 
 	if !ok {
-		log.Println("new channel request fail")
+		log.Printf("%s,new channel request fail.\n", traceId)
 
 		return nil, errors.New("New channel fail")
 
@@ -102,7 +110,7 @@ func (c *Client) BuildNewChannel(addr string) (*network.Channel, error) {
 
 	err := proto.Unmarshal(data, channelRes)
 	if err != nil {
-		log.Println("Invlid channel res!!!")
+		log.Printf("%s,Invlid channel res!!!\n", traceId)
 
 		return nil, errors.New("Invlid channel res")
 	}
@@ -112,6 +120,7 @@ func (c *Client) BuildNewChannel(addr string) (*network.Channel, error) {
 
 		channelId := channelRes.ChannelId
 		channel := network.NewChannel(channelId, c.RemoteConn)
+		channel.TraceId = traceId
 
 		c.RemoteConn.RegChannel(channelId, channel)
 

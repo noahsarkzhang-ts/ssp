@@ -24,6 +24,7 @@ message CommonRes {
 
 message newChannelReq {
     string addr = 1;
+    string traceId = 2;
 }
 
 message newChannelRes {

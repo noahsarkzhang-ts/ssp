@@ -19,6 +19,8 @@ type RemoteConn struct {
 	Target net.Conn
 
 	flag remoteConnFlag
+
+	TraceId string
 }
 
 func NewRemoteConn(target net.Conn) *RemoteConn {
@@ -31,6 +33,7 @@ func NewRemoteConn(target net.Conn) *RemoteConn {
 }
 
 func (r *RemoteConn) Close() error {
+
 	r.Lock()
 	defer r.Unlock()
 
@@ -39,7 +42,7 @@ func (r *RemoteConn) Close() error {
 		r.flag = closeFlag
 		err := r.Target.Close()
 
-		log.Printf("Close remote conn: %s:%s\n", r.Target.LocalAddr(), r.Target.RemoteAddr())
+		log.Printf("%s,Close remote conn: %s:%s\n", r.TraceId, r.Target.LocalAddr(), r.Target.RemoteAddr())
 
 		return err
 	}

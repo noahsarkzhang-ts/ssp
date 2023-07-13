@@ -1,29 +1,37 @@
 package network
 
 import (
+	"context"
 	"log"
 	"net"
 	"time"
 
 	"github.com/ssp/msg"
+	"github.com/ssp/util"
 	"google.golang.org/protobuf/proto"
 )
 
-func RpcInvoker(conn *Connection, message *msg.RpcMsg, timeout time.Duration, callbck RpcCallback) *RpcPromise {
+func RpcInvoker(ctx context.Context, conn *Connection, message *msg.RpcMsg, timeout time.Duration, callbck RpcCallback) *RpcPromise {
+
+	traceId, _ := ctx.Value("traceId").(string)
+
+	defer util.Trace(traceId, "Client RpcInvoker")()
 
 	rpcMsg := BuildMsgOfRpc(message)
-	log.Printf("send message: %v \n", rpcMsg)
+	log.Printf("%s,send message: %v \n", traceId, rpcMsg)
 
-	SendMessge(conn, rpcMsg)
+	SendMessge(ctx, conn, rpcMsg)
 
-	promise := NewRpcPromise(timeout, callbck)
+	promise := NewRpcPromise(traceId, timeout, callbck)
 	conn.RegPromise(message.Id, promise)
 
 	return promise
 
 }
 
-func SendMessge(conn *Connection, message *msg.Msg) {
+func SendMessge(ctx context.Context, conn *Connection, message *msg.Msg) {
+	traceId, _ := ctx.Value("traceId").(string)
+
 	bMsg, err := proto.Marshal(message)
 
 	if err != nil {
@@ -32,64 +40,80 @@ func SendMessge(conn *Connection, message *msg.Msg) {
 
 	data, err := msg.Encode(bMsg)
 	if err != nil {
-		log.Printf("send %d \n", len(data))
+		log.Printf("%s,send %d \n", traceId, len(data))
 		return
 	}
 
 	conn.WriteBytes(data)
 }
 
-func BuildNewChannel(context *Context, message *msg.RpcMsg) {
+func BuildNewChannel(ctx context.Context, rpcContext *Context, message *msg.RpcMsg) {
+
+	var rpcMsg *msg.RpcMsg
+	var resMsg *msg.Msg
+
 	channelReq := &msg.NewChannelReq{}
 
 	err := proto.Unmarshal(message.Data, channelReq)
 	if err != nil {
-		log.Println("Invlid new channel request!")
+
+		log.Printf("Invlid new channel request!:%s \n", err.Error())
+
+		rpcMsg = BuildNewChannelRes(message, 0, -1, err.Error())
+		resMsg = BuildMsgOfRpc(rpcMsg)
+
+		rpcContext.SendMessge(resMsg)
+
 		return
 	}
 
-	log.Printf("Receive a new channel request:%+v \n", channelReq)
+	traceId := channelReq.TraceId
+	newCtx := context.WithValue(ctx, "traceId", traceId)
+	defer util.Trace(traceId, "Server BuildNewChannel")()
+
+	log.Printf("%s,Receive a new channel request:%+v \n", traceId, channelReq)
 
 	// TODO
-	channel := context.conn.ApplyChannel()
+	channel := rpcContext.conn.ApplyChannel()
+	channel.TraceId = traceId
 
 	// 建立 TCP 连接
 	// TODO
-
-	var rpcMsg *msg.RpcMsg
-	var resMsg *msg.Msg
 	destAddrPort := channelReq.Addr
 	dest, err := net.Dial("tcp", destAddrPort)
 
 	if err != nil {
 
-		log.Printf("net Dial error:%s \n", err.Error())
+		log.Printf("%s,Net Dial error:%s \n", traceId, err.Error())
 
-		rpcMsg = BuildNewChannelRes(message, channel, -1, err.Error())
+		rpcMsg = BuildNewChannelRes(message, channel.Id, -1, err.Error())
 		resMsg = BuildMsgOfRpc(rpcMsg)
 
-		context.SendMessge(resMsg)
+		rpcContext.SendMessge(resMsg)
 
 		return
 	}
 
 	// 转发
 	target := NewRemoteConn(dest)
-	FlowForward(channel, target)
+	target.TraceId = traceId
+	FlowForward(newCtx, channel, target)
 
-	rpcMsg = BuildNewChannelRes(message, channel, 1, "success")
+	rpcMsg = BuildNewChannelRes(message, channel.Id, 1, "success")
 	resMsg = BuildMsgOfRpc(rpcMsg)
-	context.SendMessge(resMsg)
+	rpcContext.SendMessge(resMsg)
 
 }
 
-func Login(context *Context, message *msg.RpcMsg) {
+func Login(ctx context.Context, rpcContext *Context, message *msg.RpcMsg) {
+	defer util.Trace("Server Login", "")()
+
 	log.Printf("receive a login request:%+v\n", message)
 
 	res := BuildCommonRes(message)
 	resMsg := BuildMsgOfRpc(res)
 
-	context.SendMessge(resMsg)
+	rpcContext.SendMessge(resMsg)
 
 }
 
@@ -111,11 +135,12 @@ func BuildLoginReq(conn *Connection) *msg.RpcMsg {
 
 }
 
-func BuildNewChannelReq(conn *Connection, addr string) *msg.RpcMsg {
+func BuildNewChannelReq(conn *Connection, addr string, traceId string) *msg.RpcMsg {
 	request := BuildRequestHeader(conn, BuildChannelCmd)
 
 	channelReq := &msg.NewChannelReq{}
 	channelReq.Addr = addr
+	channelReq.TraceId = traceId
 
 	bChannelReq, err := proto.Marshal(channelReq)
 	if err != nil {
@@ -187,13 +212,13 @@ func BuildCommonRes(req *msg.RpcMsg) *msg.RpcMsg {
 
 }
 
-func BuildNewChannelRes(req *msg.RpcMsg, ch *Channel, code int32, resString string) *msg.RpcMsg {
+func BuildNewChannelRes(req *msg.RpcMsg, channelId uint32, code int32, resString string) *msg.RpcMsg {
 	res := BuildResponseHeader(req)
 
 	channelRes := &msg.NewChannelRes{}
 	channelRes.Code = code
 	channelRes.Msg = resString
-	channelRes.ChannelId = ch.Id
+	channelRes.ChannelId = channelId
 
 	bChannelRes, err := proto.Marshal(channelRes)
 	if err != nil {

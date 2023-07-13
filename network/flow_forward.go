@@ -1,17 +1,24 @@
 package network
 
 import (
+	"context"
 	"io"
 	"log"
+
+	"github.com/ssp/util"
 )
 
-func FlowForward(client *Channel, target *RemoteConn) {
+func FlowForward(ctx context.Context, client *Channel, target *RemoteConn) {
+
+	traceId, _ := ctx.Value("traceId").(string)
 
 	ch2connForward := func(src *Channel, dest *RemoteConn) {
+
+		defer util.Trace(traceId, "ch2connForward")()
 		defer src.Close()
 		defer dest.Close()
 
-		log.Printf("start ch2conn: %s\n", client)
+		log.Printf("%s,Start ch2conn: %s\n", traceId, client)
 
 		var written int64
 		var err error
@@ -19,17 +26,18 @@ func FlowForward(client *Channel, target *RemoteConn) {
 			written, err = io.Copy(dest.Target, src)
 		}
 
-		log.Printf("close ch2conn: %s,written:%d\n", client, written)
+		log.Printf("%s,Close ch2conn: %s,written:%d\n", traceId, client, written)
 		if err != nil {
-			log.Printf("close ch2conn: %s,case:%s\n", client, err.Error())
+			log.Printf("%s,Close ch2conn: %s,case:%s\n", traceId, client, err.Error())
 		}
 	}
 
 	conn2chForward := func(src *RemoteConn, dest *Channel) {
+		defer util.Trace(traceId, "conn2chForward")()
 		defer src.Close()
 		defer dest.Close()
 
-		log.Printf("start conn2ch: %s\n", client)
+		log.Printf("%s,Start conn2ch: %s\n", traceId, client)
 
 		var written int64
 		var err error
@@ -38,9 +46,9 @@ func FlowForward(client *Channel, target *RemoteConn) {
 			written, err = io.Copy(dest, src.Target)
 		}
 
-		log.Printf("close conn2ch: %s,written:%d\n", client, written)
+		log.Printf("%s,Close conn2ch: %s,written:%d\n", traceId, client, written)
 		if err != nil {
-			log.Printf("close conn2ch: %s,case:%s\n", client, err.Error())
+			log.Printf("%s,Close conn2ch: %s,case:%s\n", traceId, client, err.Error())
 		}
 
 	}

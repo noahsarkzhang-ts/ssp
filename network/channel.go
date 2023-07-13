@@ -1,6 +1,7 @@
 package network
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync"
@@ -29,6 +30,9 @@ type Channel struct {
 
 	// 状态
 	flag channelFlag
+
+	// traceId
+	TraceId string
 }
 
 func NewChannel(id uint32, conn *Connection) *Channel {
@@ -46,7 +50,7 @@ func (c *Channel) Write(p []byte) (n int, err error) {
 	wrLen := len(p)
 
 	flowMsg := BuildMsgOfFlow(p, c.Id)
-	SendMessge(c.UnderlyingConn, flowMsg)
+	SendMessge(context.TODO(), c.UnderlyingConn, flowMsg)
 
 	return wrLen, nil
 }
@@ -75,7 +79,7 @@ func (c *Channel) Close() error {
 
 	c.UnderlyingConn.RemoveChannel(c.Id)
 
-	log.Printf("Close channel %s \n", c.String())
+	log.Printf("%s,Close channel %s \n", c.TraceId, c.String())
 
 	return nil
 }

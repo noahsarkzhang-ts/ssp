@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -9,12 +10,16 @@ import (
 	"net"
 
 	"github.com/ssp/network"
+	"github.com/ssp/util"
 )
 
 type Socks5Proxy struct {
 	Addr           string
 	Proxy          net.Listener
 	RemoteEndpoint *Client
+
+	// Trace ID 生成器
+	traceIdGenerator *util.Id
 }
 
 func NewSocks5Proxy(addr string, client *Client) *Socks5Proxy {
@@ -29,41 +34,54 @@ func (p *Socks5Proxy) Start() {
 	}
 
 	p.Proxy = server
+	p.traceIdGenerator = util.NewId(0)
+
 	go p.Accept()
 
 	log.Println("Proxy Listen successfully:")
 }
 
 func (p *Socks5Proxy) Accept() {
+
+	ctx := context.Background()
+
 	for {
 		src, err := p.Proxy.Accept()
 		if err != nil {
 			log.Printf("Socks5 proxy accept failed: %+v \n", err)
 			continue
 		}
-		go p.Process(src)
+
+		traceId := fmt.Sprintf("id:%d", p.traceIdGenerator.IncrementAndGet())
+		newCtx := context.WithValue(ctx, "traceId", traceId)
+
+		go p.Process(newCtx, src)
 	}
 }
 
-func (p *Socks5Proxy) Process(src net.Conn) {
+func (p *Socks5Proxy) Process(ctx context.Context, src net.Conn) {
+	traceId := ctx.Value("traceId").(string)
 
-	log.Printf("New conn:%s \n", src.RemoteAddr())
+	defer util.Trace(traceId, "Client Process")()
+
+	log.Printf("%s,New conn:%s \n", traceId, src.RemoteAddr())
 
 	if err := p.Socks5Auth(src); err != nil {
-		log.Println("auth error:", err)
+		log.Printf("%s,auth error:%s\n", traceId, err.Error())
 		src.Close()
 		return
 	}
 
-	channel, err := p.Socks5Connect(src)
+	channel, err := p.Socks5Connect(ctx, src)
 	if err != nil {
-		log.Println("connect error:", err)
+		log.Printf("%s,connect error:%s\n", traceId, err.Error())
 		src.Close()
 		return
 	}
 
 	target := network.NewRemoteConn(src)
-	network.FlowForward(channel, target)
+	target.TraceId = traceId
+	network.FlowForward(ctx, channel, target)
 }
 
 func (p *Socks5Proxy) Socks5Auth(src net.Conn) (err error) {
@@ -95,7 +113,7 @@ func (p *Socks5Proxy) Socks5Auth(src net.Conn) (err error) {
 	return nil
 }
 
-func (p *Socks5Proxy) Socks5Connect(src net.Conn) (*network.Channel, error) {
+func (p *Socks5Proxy) Socks5Connect(ctx context.Context, src net.Conn) (*network.Channel, error) {
 	buf := make([]byte, 256)
 
 	n, err := io.ReadFull(src, buf[:4])
@@ -147,11 +165,12 @@ func (p *Socks5Proxy) Socks5Connect(src net.Conn) (*network.Channel, error) {
 
 	// dest, err := net.Dial("tcp", destAddrPort)
 	// 建立远程通道
-	log.Printf("Connect %s\n", destAddrPort)
-	dest, err := p.RemoteEndpoint.BuildNewChannel(destAddrPort)
+	traceId := ctx.Value("traceId").(string)
+	log.Printf("%s,Connect %s\n", traceId, destAddrPort)
+	dest, err := p.RemoteEndpoint.BuildNewChannel(ctx, destAddrPort)
 
 	if err != nil {
-		log.Printf("Connect %s failed\n", destAddrPort)
+		log.Printf("%s,Connect %s failed\n", traceId, destAddrPort)
 		src.Write([]byte{0x05, 0x04, 0x00, 0x01, 0, 0, 0, 0, 0, 0})
 		return nil, errors.New("dial dst: " + err.Error())
 	}
