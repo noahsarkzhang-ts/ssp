@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"net"
 	"time"
@@ -30,14 +31,19 @@ type Client struct {
 	Proxy      *Socks5Proxy
 
 	ticker time.Ticker
+
+	traceId string
 }
 
 func New(ServerAddr string) *Client {
-	return &Client{Flag: Init, ServerAddr: ServerAddr}
+	gid := fmt.Sprintf("gid:%d", util.GetGID())
+
+	return &Client{Flag: Init, ServerAddr: ServerAddr, traceId: gid}
 }
 
 func (c *Client) Connect() bool {
-	defer util.Trace("", "Client Connect")()
+
+	defer util.Trace(c.traceId, "Client Connect")()
 
 	conn, err := net.Dial("tcp", c.ServerAddr)
 	if err != nil {
@@ -77,7 +83,7 @@ func (c *Client) Reconnect() {
 
 func (c *Client) login() {
 
-	defer util.Trace("", "Client Login")()
+	defer util.Trace(c.traceId, "Client Login")()
 
 	message := network.BuildLoginReq(c.RemoteConn)
 	log.Printf("send rpc message: %v \n", message)
