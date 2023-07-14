@@ -16,8 +16,9 @@ func main() {
 	proxy := client.New(serverAddr)
 
 	proxy.Connect()
-
 	proxy.Start()
+
+	go proxy.Reconnect()
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, syscall.SIGHUP, syscall.SIGQUIT, syscall.SIGTERM, syscall.SIGINT)

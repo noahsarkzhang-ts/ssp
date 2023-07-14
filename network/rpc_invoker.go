@@ -181,6 +181,24 @@ func BuildMsgOfFlow(data []byte, channelId uint32) *msg.Msg {
 	return msg
 }
 
+func BuildMsgOfPing() *msg.Msg {
+	msg := &msg.Msg{}
+
+	msg.Id = 1
+	msg.Cmd = uint32(PingMsgCmd)
+
+	return msg
+}
+
+func BuildMsgOfPong() *msg.Msg {
+	msg := &msg.Msg{}
+
+	msg.Id = 1
+	msg.Cmd = uint32(PongMsgCmd)
+
+	return msg
+}
+
 func LoginReqCallback(conn *Connection, message *msg.RpcMsg) {
 	res := &msg.CommonRes{}
 

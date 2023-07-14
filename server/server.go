@@ -53,5 +53,6 @@ func (s *Server) Accept(listener net.Listener) {
 
 		go connection.Read()
 		go connection.Write()
+		go connection.Timeout()
 	}
 }

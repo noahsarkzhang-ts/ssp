@@ -38,7 +38,7 @@ func (p *Socks5Proxy) Start() {
 
 	go p.Accept()
 
-	log.Println("Proxy Listen successfully:")
+	log.Println("Socks5 proxy client startup successfully:")
 }
 
 func (p *Socks5Proxy) Accept() {
@@ -48,7 +48,7 @@ func (p *Socks5Proxy) Accept() {
 	for {
 		src, err := p.Proxy.Accept()
 		if err != nil {
-			log.Printf("Socks5 proxy accept failed: %+v \n", err)
+			log.Printf("Socks5 proxy client accept failed: %+v \n", err)
 			continue
 		}
 

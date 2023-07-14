@@ -20,6 +20,7 @@ const (
 	Connected   ClientFlag = 1
 	UnConnected ClientFlag = 2
 	Ready       ClientFlag = 3
+	UnReady     ClientFlag = 4
 )
 
 type Client struct {
@@ -27,35 +28,56 @@ type Client struct {
 	ServerAddr string
 	RemoteConn *network.Connection
 	Proxy      *Socks5Proxy
+
+	ticker time.Ticker
 }
 
 func New(ServerAddr string) *Client {
 	return &Client{Flag: Init, ServerAddr: ServerAddr}
 }
 
-func (c *Client) Connect() {
-	defer util.Trace("Client Connect", "")()
+func (c *Client) Connect() bool {
+	defer util.Trace("", "Client Connect")()
 
 	conn, err := net.Dial("tcp", c.ServerAddr)
 	if err != nil {
-		log.Printf("Connect server:%s fail...\n", c.ServerAddr)
-		panic(err)
+		log.Printf("Connect remote server:%s fail...\n", c.ServerAddr)
+		c.Flag = UnConnected
+		return false
 	}
 
-	log.Printf("Connect server:%s success...\n", c.ServerAddr)
+	log.Printf("Connect remote server:%s success...\n", c.ServerAddr)
 
 	connection := network.NewConnection(conn)
 	c.RemoteConn = connection
 
 	go connection.Read()
 	go connection.Write()
+	go connection.PingPongAndTimeout()
 
 	c.login()
 
+	return c.Flag == Ready
+
+}
+
+func (c *Client) Reconnect() {
+	c.ticker = *time.NewTicker(5 * time.Second)
+
+	for {
+		select {
+		case <-c.ticker.C:
+			if c.Flag != Ready || c.RemoteConn.Closed() {
+				log.Printf("Connection was close,reconnect ......\n")
+				c.Connect()
+			}
+		}
+	}
 }
 
 func (c *Client) login() {
-	defer util.Trace("Client Login", "")()
+
+	defer util.Trace("", "Client Login")()
 
 	message := network.BuildLoginReq(c.RemoteConn)
 	log.Printf("send rpc message: %v \n", message)
@@ -66,7 +88,7 @@ func (c *Client) login() {
 
 	if !ok {
 		log.Println("login request fail")
-		c.Flag = UnConnected
+		c.Flag = UnReady
 		return
 	}
 
@@ -76,7 +98,7 @@ func (c *Client) login() {
 	err := proto.Unmarshal(data, commonRes)
 	if err != nil {
 		log.Println("Invlid login res!!!")
-		c.Flag = UnConnected
+		c.Flag = UnReady
 		return
 	}
 
@@ -88,6 +110,13 @@ func (c *Client) login() {
 }
 
 func (c *Client) BuildNewChannel(ctx context.Context, addr string) (*network.Channel, error) {
+
+	if !c.Available() {
+		log.Println("Client is not available!")
+
+		return nil, errors.New("Client is not available!")
+	}
+
 	traceId, _ := ctx.Value("traceId").(string)
 
 	defer util.Trace(traceId, "Client BuildNewChannel")()
@@ -140,4 +169,8 @@ func (c *Client) Start() {
 	c.Proxy = proxy
 
 	proxy.Start()
+}
+
+func (c *Client) Available() bool {
+	return c.Flag == Ready
 }

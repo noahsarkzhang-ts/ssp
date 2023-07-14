@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/ssp/msg"
@@ -17,9 +18,10 @@ import (
 type MsgCmd uint32
 
 const (
-	HeartbeatMsgCmd MsgCmd = 5
-	RpcMsgCmd       MsgCmd = 11
-	FlowMsgCmd      MsgCmd = 12
+	PingMsgCmd MsgCmd = 5
+	PongMsgCmd MsgCmd = 6
+	RpcMsgCmd  MsgCmd = 11
+	FlowMsgCmd MsgCmd = 12
 )
 
 type connectonFlag uint8
@@ -59,6 +61,18 @@ type Connection struct {
 
 	//读写锁，控制对 promises 字段的并发读写
 	promiseMutex sync.RWMutex
+
+	// 定时器，用于客户端发送心跳信息
+	ticker *time.Ticker
+
+	// 最近一次心跳时间
+	lastBeatTime time.Time
+
+	// 远端待删除的 channel 列表
+	remomtePendingClose chan uint32
+
+	// 待删除的 channel 列表
+	pendingClose chan uint32
 }
 
 func NewConnection(conn net.Conn) *Connection {
@@ -73,6 +87,11 @@ func NewConnection(conn net.Conn) *Connection {
 	connection.promises = map[uint32]*RpcPromise{}
 
 	connection.flag = connectionOpenFlag
+
+	connection.remomtePendingClose = make(chan uint32, 100)
+	connection.pendingClose = make(chan uint32, 100)
+
+	connection.lastBeatTime = time.Now()
 
 	return connection
 }
@@ -111,9 +130,11 @@ func (c *Connection) Read() {
 		case FlowMsgCmd:
 			// 写入channel
 			c.Flow(m)
-		case HeartbeatMsgCmd:
+		case PingMsgCmd:
+			c.doPing()
+		case PongMsgCmd:
+			c.doPong()
 		default:
-
 		}
 
 	}
@@ -121,11 +142,17 @@ func (c *Connection) Read() {
 }
 
 func (c *Connection) Close() {
-	c.flagMutex.Lock()
-	c.flag = connectionCloseFlag
-	c.flagMutex.Unlock()
-
 	log.Printf("Start close connection .....")
+
+	c.flagMutex.Lock()
+
+	if c.flag == connectionCloseFlag {
+		return
+	}
+
+	c.flag = connectionCloseFlag
+
+	c.flagMutex.Unlock()
 	// 关闭 写缓存
 	close(c.writerBuff)
 
@@ -139,6 +166,8 @@ func (c *Connection) Close() {
 	c.channels = nil
 	c.promises = nil
 
+	c.conn.Close()
+
 	log.Printf("End close connection.....")
 }
 
@@ -149,6 +178,70 @@ func (c *Connection) Write() {
 		c.conn.Write(data)
 	}
 
+}
+
+func (c *Connection) doPing() {
+	// log.Printf("Receive a ping:%s,%s.\n", c.conn.RemoteAddr(), time.Now())
+	c.lastBeatTime = time.Now()
+
+	pongMsg := BuildMsgOfPong()
+	SendMessge(context.TODO(), c, pongMsg)
+}
+
+func (c *Connection) doPong() {
+	//log.Printf("Receive a pong:%s,%s.\n", c.conn.RemoteAddr(), time.Now())
+	c.lastBeatTime = time.Now()
+}
+
+func (c *Connection) PingPongAndTimeout() {
+	// 5S 触发一次判断
+	c.ticker = time.NewTicker(5 * time.Second)
+	defer c.ticker.Stop()
+
+	for {
+		select {
+		case <-c.ticker.C:
+			c.ping()
+			if c.doTimeout() {
+				return
+			}
+		}
+	}
+
+}
+
+func (c *Connection) Timeout() {
+	// 5S 触发一次判断
+	c.ticker = time.NewTicker(5 * time.Second)
+	defer c.ticker.Stop()
+
+	for {
+		select {
+		case <-c.ticker.C:
+			if c.doTimeout() {
+				return
+			}
+		}
+	}
+}
+
+func (c *Connection) ping() {
+	pingMsg := BuildMsgOfPing()
+	SendMessge(context.TODO(), c, pingMsg)
+}
+
+func (c *Connection) doTimeout() bool {
+	if c.lastBeatTime.Add(15 * time.Second).Before(time.Now()) {
+
+		log.Printf("Connection Timeout:%s,%s.\n", c.conn.RemoteAddr(), time.Now())
+
+		c.Close()
+
+		return true
+
+	}
+
+	return false
 }
 
 func (c *Connection) WriteBytes(data []byte) error {
@@ -256,4 +349,8 @@ func (c *Connection) RpcProcess(ctx context.Context, message []byte) error {
 	}
 
 	return nil
+}
+
+func (c *Connection) Closed() bool {
+	return c.flag == connectionCloseFlag
 }

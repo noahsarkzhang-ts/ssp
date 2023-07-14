@@ -68,13 +68,15 @@ func (c *Channel) Read(p []byte) (n int, err error) {
 func (c *Channel) Close() error {
 
 	c.Lock()
-	defer c.Unlock()
 
 	if c.flag == channelCloseFlag {
 		return nil
 	}
 
 	c.flag = channelCloseFlag
+
+	c.Unlock()
+
 	close(c.ReadBuff)
 
 	c.UnderlyingConn.RemoveChannel(c.Id)
